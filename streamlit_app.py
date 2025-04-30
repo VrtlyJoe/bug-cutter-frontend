@@ -1,12 +1,10 @@
 import streamlit as st
 import requests
-import urllib.parse
 
 st.set_page_config(page_title="Vrtly Bug Template")
 
-# ✅ Extract token from URL and persist
-query_params = st.experimental_get_query_params()
-token_from_url = query_params.get("access_token", [None])[0]
+# ✅ Updated: use st.query_params instead of deprecated experimental version
+token_from_url = st.query_params.get("access_token")
 
 if token_from_url:
     st.session_state["token"] = token_from_url
@@ -30,13 +28,12 @@ with st.form("bug_form"):
     summary = st.text_input("📝 Summary", help="Required")
     description = st.text_area("🗒 Description", value="Org Name:\nOrg ID:\nIssue:\nExpected Behavior:")
     
-    # Fetch dropdown options from backend
     options = requests.get(f"{BACKEND_URL}/options", params={"token": token}).json()
     priorities = options.get("priorities", [])
     categories = options.get("categories", [])
 
     priority = st.selectbox("🔥 Priority", priorities or ["Highest", "Medium", "Lowest"])
-    
+
     if categories:
         category = st.selectbox("📁 Bug Category", categories)
     else:
@@ -86,4 +83,4 @@ with st.form("bug_form"):
         else:
             st.error(f"❌ Failed to create bug: {response.text}")
 
-st.markdown("Thanks! -The Bug Cutter team.")
+st.markdown("Built with heart by the Bug Cutter team.")
