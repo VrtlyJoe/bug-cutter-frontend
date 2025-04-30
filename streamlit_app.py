@@ -1,88 +1,54 @@
+# streamlit_app.py
 import streamlit as st
-import requests
+import streamlit.components.v1 as components
+from urllib.parse import urlparse, parse_qs
+import requests  # in case your app needs backend calls
+import traceback
 
-st.set_page_config(page_title="Bug Cutter", layout="centered")
+# --- GLOBAL APP CONFIG ---
+st.set_page_config(page_title="Bug Cutter", layout="wide")
 
-BACKEND_URL = "https://bug-cutter-backend.onrender.com"
-query_params = st.query_params
+# --- DEBUG: PAGE LOAD TRACKING ---
+st.write("🌀 App loaded")
 
-if "access_token" not in st.session_state and "access_token" in query_params:
-    st.session_state["access_token"] = query_params["access_token"]
+# --- QUERY PARAM + AUTH HANDLING ---
+query_params = st.query_params.to_dict()
+access_token = query_params.get("access_token", None)
+st.write("🔍 Query parameters:", query_params)
 
-st.title("🐞 Bug Cutter Dashboard")
-st.markdown("Welcome to the Bug Cutter App. Cut bugs. Add subtasks. Connect with Jira.")
-st.subheader("🔐 Jira Authentication")
-
-priority_options = ["Medium"]
-category_options = []
-
-if "access_token" not in st.session_state:
-    st.markdown(f"[🔗 Click here to connect Jira]({BACKEND_URL}/auth/start)")
+if access_token:
+    st.session_state["access_token"] = access_token
+    st.success("✅ Access token captured")
+    
+    # Cleanup URL
+    components.html("""
+        <script>
+            const newUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState(null, null, newUrl);
+        </script>
+    """, height=0)
 else:
-    access_token = st.session_state["access_token"]
+    st.warning("⚠️ No access token found in query params.")
 
+# --- SESSION DEBUGGING ---
+st.subheader("🧪 Session Debug")
+st.write(st.session_state)
+
+# --- UI HEADER ---
+st.title("🐛 Bug Cutter App")
+
+# --- PLACEHOLDER: DUPLICATE CHECK (SAFE) ---
+if st.checkbox("Run Duplicate Ticket Check"):
     try:
-        headers = {"Authorization": f"Bearer {access_token}"}
-        cloud_resp = requests.get("https://api.atlassian.com/oauth/token/accessible-resources", headers=headers)
-        cloud_resp.raise_for_status()
-        cloud_id = cloud_resp.json()[0]["id"]
-
-        me_url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/myself"
-        me_resp = requests.get(me_url, headers=headers)
-        me_resp.raise_for_status()
-        email = me_resp.json().get("emailAddress", "Unknown user")
-
-        st.success(f"🔐 Logged in as {email}")
-
-        opt_resp = requests.get(f"{BACKEND_URL}/options", params={"token": access_token})
-        if opt_resp.ok:
-            opt_data = opt_resp.json()
-            priority_options = opt_data.get("priorities", priority_options)
-            category_options = opt_data.get("categories", category_options)
-
-        st.subheader("🪓 Submit a Bug")
-        with st.form("bug_submit_form"):
-            summary = st.text_input("📝 Summary")
-            description = st.text_area("🗒 Description")
-            priority = st.selectbox("🔥 Priority", priority_options)
-            category = (
-                st.selectbox("📁 Category", category_options)
-                if category_options else
-                st.text_input("📁 Category")
-            )
-            assignee = st.text_input("👤 Assignee (optional)", placeholder="jira.username")
-            components = st.text_input("🏷 Components (optional, comma-separated)")
-            subtasks = st.text_area("📌 Subtasks (one per line)", height=100)
-            uploaded_files = st.file_uploader("📎 Attach files", accept_multiple_files=True)
-
-            submit = st.form_submit_button("🚀 Submit Bug")
-
-        if submit:
-            with st.spinner("Creating bug."):
-                files = [("files", (f.name, f.read())) for f in uploaded_files] if uploaded_files else []
-                payload = {
-                    "summary": summary,
-                    "description": description,
-                    "priority": priority,
-                    "category": category,
-                    "assignee": assignee,
-                    "components": components,
-                    "subtasks": subtasks,
-                    "token": access_token,
-                }
-                try:
-                    response = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files or None)
-                    if response.status_code == 200:
-                        st.success(f"✅ Bug created: {response.json().get('issue_key')}")
-                    else:
-                        st.error(f"❌ Error: {response.status_code}")
-                        st.text(response.text)
-                except Exception as e:
-                    st.error(f"Request failed: {e}")
-
+        st.info("🔍 Checking for duplicates...")
+        # Replace with real logic
+        # Example dummy check
+        # response = requests.get("https://your-backend/api/check-duplicate", headers={"Authorization": f"Bearer {access_token}"})
+        # result = response.json()
+        result = {"status": "ok", "duplicate": False}  # dummy result
+        st.success(f"✅ Duplicate check complete: {result}")
     except Exception as e:
-        st.error("⚠️ Logged in, but failed to fetch user info or dropdowns.")
-        st.text(str(e))
+        st.error(f"❌ Error during duplicate check:\n{traceback.format_exc()}")
 
-st.markdown("---")
-st.caption("🛠 Powered by Bug Cutter, Atlassian, Slack, and Streamlit.")
+# --- PLACEHOLDER: MAIN APP CONTENT ---
+st.write("📋 Bug cutting form or interface will go here.")
