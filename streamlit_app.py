@@ -45,7 +45,7 @@ else:
 
         st.subheader("🪓 Submit a Bug")
 
-        with st.form("bug_submit_form"):
+        with st.form("bug_submit_form", clear_on_submit=False):
             summary = st.text_input("📝 Summary", placeholder="Required")
             default_desc = "Org Name: \nOrg ID: \nIssue: \nExpected Behavior:"
             description = st.text_area("🗒 Description", value=default_desc, height=150)
@@ -58,7 +58,6 @@ else:
                 st.warning("⚠️ No categories from Jira. Using fallback input.")
                 category = st.text_input("📁 Bug Category")
 
-            # True autocomplete logic (single box)
             assignee_query = st.text_input("👤 Search Assignee")
             assignee = ""
             if assignee_query:
@@ -83,12 +82,15 @@ else:
             if uploaded_files:
                 for f in uploaded_files:
                     if f.type.startswith("image/"):
-                        st.image(f, caption=f.name, use_column_width=True)
+                        st.image(f, caption=f.name, use_container_width=True)
 
-            submit = st.form_submit_button("🚀 Submit Bug")
+            confirm = st.checkbox("✅ I confirm this is a real bug and not a test or duplicate.")
+            submit = st.form_submit_button("🚀 Cut Bug")
 
         if submit:
-            if not summary.strip():
+            if not confirm:
+                st.error("Please confirm before cutting a bug.")
+            elif not summary.strip():
                 st.error("Summary is required.")
             elif not description.strip() or description == default_desc:
                 st.error("Please fill in the description.")
@@ -109,6 +111,8 @@ else:
                         response = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files or None)
                         if response.status_code == 200:
                             st.success(f"✅ Bug created: {response.json().get('issue_key')}")
+                        elif response.status_code == 409:
+                            st.warning(f"⚠️ Duplicate bug: {response.json().get('message')}")
                         else:
                             st.error(f"❌ Error: {response.status_code}")
                             st.text(response.text)
@@ -120,4 +124,4 @@ else:
         st.text(str(e))
 
 st.markdown("---")
-st.caption("The Bug Cutter team.")
+st.caption("Built with ❤️ by the Bug Cutter team.")
