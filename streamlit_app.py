@@ -10,7 +10,7 @@ if "access_token" not in st.session_state and "access_token" in query_params:
     st.session_state["access_token"] = query_params["access_token"]
 
 st.title("Vrtly Bug Template")
-st.markdown("Streamlined bug submission with Jira + Slack integration.")
+st.markdown("File bugs with all the bells and whistles: Slack, components, autocomplete.")
 
 priority_options = ["Medium"]
 category_options = []
@@ -23,7 +23,6 @@ else:
     headers = {"Authorization": f"Bearer {access_token}"}
 
     try:
-        # Get Jira identity and cloud ID
         cloud_resp = requests.get("https://api.atlassian.com/oauth/token/accessible-resources", headers=headers)
         cloud_resp.raise_for_status()
         cloud_id = cloud_resp.json()[0]["id"]
@@ -34,14 +33,12 @@ else:
         email = me_resp.json().get("emailAddress", "Unknown user")
         st.success(f"🔐 Logged in as {email}")
 
-        # Get dropdown options
         opt_resp = requests.get(f"{BACKEND_URL}/options", params={"token": access_token})
         if opt_resp.ok:
             opt_data = opt_resp.json()
             priority_options = opt_data.get("priorities", priority_options)
             category_options = opt_data.get("categories", category_options)
 
-        # Get all components (once)
         comp_resp = requests.get(f"{BACKEND_URL}/autocomplete/components", params={"token": access_token})
         if comp_resp.ok:
             component_options = comp_resp.json().get("results", [])
@@ -49,17 +46,18 @@ else:
         st.subheader("🪓 Submit a Bug")
 
         with st.form("bug_submit_form"):
-            summary = st.text_input("📝 Summary")
-            description = st.text_area("🗒 Description")
+            summary = st.text_input("📝 Summary", placeholder="Required")
+            default_desc = "Org Name: \nOrg ID: \nIssue: \nExpected Behavior:"
+            description = st.text_area("🗒 Description", value=default_desc, height=150)
+
             priority = st.selectbox("🔥 Priority", priority_options)
 
             if category_options:
                 category = st.selectbox("📁 Category", category_options)
             else:
-                st.warning("⚠️ No categories available from Jira. Using fallback input.")
+                st.warning("⚠️ No categories from Jira. Using fallback input.")
                 category = st.text_input("📁 Category")
 
-            # Assignee autocomplete flow
             assignee_input = st.text_input("👤 Assignee (type to search)", key="assignee_input")
             assignee = ""
             if assignee_input.strip():
@@ -68,7 +66,10 @@ else:
                     params={"token": access_token, "q": assignee_input}
                 )
                 matches = a_resp.json().get("results", []) if a_resp.ok else []
-                assignee_names = [m["name"] for m in matches if m.get("name")]
+                assignee_names = [
+                    m.get("name") or m.get("displayName") for m in matches
+                    if m.get("name") or m.get("displayName")
+                ]
                 if assignee_names:
                     assignee = st.selectbox("🔎 Select Assignee", assignee_names, key="assignee_select")
 
@@ -81,31 +82,36 @@ else:
             submit = st.form_submit_button("🚀 Submit Bug")
 
         if submit:
-            with st.spinner("Creating bug..."):
-                files = [("files", (f.name, f.read())) for f in uploaded_files] if uploaded_files else []
-                payload = {
-                    "summary": summary,
-                    "description": description,
-                    "priority": priority,
-                    "category": category,
-                    "assignee": assignee,
-                    "components": components,
-                    "subtasks": subtasks,
-                    "token": access_token,
-                }
-                try:
-                    response = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files or None)
-                    if response.status_code == 200:
-                        st.success(f"✅ Bug created: {response.json().get('issue_key')}")
-                    else:
-                        st.error(f"❌ Error: {response.status_code}")
-                        st.text(response.text)
-                except Exception as e:
-                    st.error(f"Request failed: {e}")
+            if not summary.strip():
+                st.error("Summary is required.")
+            elif not description.strip() or description == default_desc:
+                st.error("Please fill in the description.")
+            else:
+                with st.spinner("Creating bug..."):
+                    files = [("files", (f.name, f.read())) for f in uploaded_files] if uploaded_files else []
+                    payload = {
+                        "summary": summary,
+                        "description": description,
+                        "priority": priority,
+                        "category": category,
+                        "assignee": assignee,
+                        "components": components,
+                        "subtasks": subtasks,
+                        "token": access_token,
+                    }
+                    try:
+                        response = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files or None)
+                        if response.status_code == 200:
+                            st.success(f"✅ Bug created: {response.json().get('issue_key')}")
+                        else:
+                            st.error(f"❌ Error: {response.status_code}")
+                            st.text(response.text)
+                    except Exception as e:
+                        st.error(f"Request failed: {e}")
 
     except Exception as e:
         st.error("⚠️ Login succeeded, but Jira API failed.")
         st.text(str(e))
 
 st.markdown("---")
-st.caption("Built with 🛠 by the Bug Cutter team.")
+st.caption("Built with ❤️ by the Bug Cutter team.")
