@@ -3,8 +3,9 @@ import requests
 
 st.set_page_config(page_title="Vrtly Bug Template")
 
-# ✅ Updated: use st.query_params instead of deprecated experimental version
-token_from_url = st.query_params.get("access_token")
+# ✅ Properly parse token from query string (string, not list)
+token_param = st.query_params.get("access_token")
+token_from_url = token_param[0] if token_param else None
 
 if token_from_url:
     st.session_state["token"] = token_from_url
@@ -21,13 +22,13 @@ BACKEND_URL = "https://bug-cutter-backend.onrender.com"
 st.title("Vrtly Bug Template")
 st.caption("File bugs with all the bells and whistles: Slack, autocomplete, and screenshots.")
 
-st.markdown(f"🔐 Logged in with token ending in `{token[-6:]}`" if token else "❌ Not logged in")
+st.markdown(f"🔐 Logged in with token ending in `{token[-6:]}`")
 
 # Form
 with st.form("bug_form"):
     summary = st.text_input("📝 Summary", help="Required")
     description = st.text_area("🗒 Description", value="Org Name:\nOrg ID:\nIssue:\nExpected Behavior:")
-    
+
     options = requests.get(f"{BACKEND_URL}/options", params={"token": token}).json()
     priorities = options.get("priorities", [])
     categories = options.get("categories", [])
@@ -83,4 +84,4 @@ with st.form("bug_form"):
         else:
             st.error(f"❌ Failed to create bug: {response.text}")
 
-st.markdown("Built with heart by the Bug Cutter team.")
+st.markdown("Built with ❤️ by the Bug Cutter team.")
