@@ -1,20 +1,11 @@
 import streamlit as st
 import requests
-import streamlit.runtime.scriptrunner.script_run_context as script_context
 
 st.set_page_config(page_title="Vrtly Bug Template")
 
-# ✅ Extract token from URL fragment
-def parse_fragment_token():
-    ctx = script_context.get_script_run_ctx()
-    if not ctx or not ctx.query_string:
-        return None
-    fragment = ctx.query_string  # e.g., token=abc123
-    if fragment.startswith("token="):
-        return fragment.split("=", 1)[1]
-    return None
-
-token_from_url = parse_fragment_token()
+# ✅ Safely extract token from query params (as list or string)
+token_param = st.query_params.get("access_token")
+token_from_url = token_param[0] if isinstance(token_param, list) else token_param
 
 if token_from_url:
     st.session_state["token"] = token_from_url
@@ -33,7 +24,6 @@ st.caption("File bugs with all the bells and whistles: Slack, autocomplete, and 
 
 st.markdown(f"🔐 Logged in with token ending in `{token[-6:]}`")
 
-# Form
 with st.form("bug_form"):
     summary = st.text_input("📝 Summary", help="Required")
     description = st.text_area("🗒 Description", value="Org Name:\nOrg ID:\nIssue:\nExpected Behavior:")
@@ -93,4 +83,4 @@ with st.form("bug_form"):
         else:
             st.error(f"❌ Failed to create bug: {response.text}")
 
-st.markdown("Built with HEART by the Bug Cutter team.")
+st.markdown("Built with ❤️ by the Bug Cutter team.")
