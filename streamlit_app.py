@@ -84,4 +84,4 @@ with st.form("bug_form"):
         else:
             st.error(f"❌ Failed to create bug: {response.text}")
 
-st.markdown("Built with ❤️ by the Bug Cutter team.")
+st.markdown("Built with heart by the Bug Cutter team.")
