@@ -10,7 +10,7 @@ if "access_token" not in st.session_state and "access_token" in query_params:
     st.session_state["access_token"] = query_params["access_token"]
 
 st.title("Vrtly Bug Template")
-st.markdown("File bugs with all the bells and whistles: Slack, components, autocomplete.")
+st.markdown("File bugs with all the bells and whistles: Slack, autocomplete, and screenshots.")
 
 priority_options = ["Medium"]
 category_options = []
@@ -53,10 +53,10 @@ else:
             priority = st.selectbox("🔥 Priority", priority_options)
 
             if category_options:
-                category = st.selectbox("📁 Category", category_options)
+                category = st.selectbox("📁 Bug Category", category_options)
             else:
                 st.warning("⚠️ No categories from Jira. Using fallback input.")
-                category = st.text_input("📁 Category")
+                category = st.text_input("📁 Bug Category")
 
             assignee_input = st.text_input("👤 Assignee (type to search)", key="assignee_input")
             assignee = ""
@@ -78,6 +78,11 @@ else:
 
             subtasks = st.text_area("📌 Subtasks (one per line)", height=100)
             uploaded_files = st.file_uploader("📎 Attach files", accept_multiple_files=True)
+
+            if uploaded_files:
+                for f in uploaded_files:
+                    if f.type.startswith("image/"):
+                        st.image(f, caption=f.name, use_column_width=True)
 
             submit = st.form_submit_button("🚀 Submit Bug")
 
