@@ -1,11 +1,20 @@
 import streamlit as st
 import requests
+import streamlit.runtime.scriptrunner.script_run_context as script_context
 
 st.set_page_config(page_title="Vrtly Bug Template")
 
-# ✅ Properly parse token from query string (string, not list)
-token_param = st.query_params.get("access_token")
-token_from_url = token_param[0] if token_param else None
+# ✅ Extract token from URL fragment
+def parse_fragment_token():
+    ctx = script_context.get_script_run_ctx()
+    if not ctx or not ctx.query_string:
+        return None
+    fragment = ctx.query_string  # e.g., token=abc123
+    if fragment.startswith("token="):
+        return fragment.split("=", 1)[1]
+    return None
+
+token_from_url = parse_fragment_token()
 
 if token_from_url:
     st.session_state["token"] = token_from_url
@@ -84,4 +93,4 @@ with st.form("bug_form"):
         else:
             st.error(f"❌ Failed to create bug: {response.text}")
 
-st.markdown("Built with heart by the Bug Cutter team.")
+st.markdown("Built with HEART by the Bug Cutter team.")
