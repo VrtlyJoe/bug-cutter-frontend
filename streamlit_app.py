@@ -16,8 +16,27 @@ st.subheader("🔐 Jira Authentication")
 if "access_token" not in st.session_state:
     st.markdown(f"[🔗 Click here to connect Jira]({BACKEND_URL}/auth/start)")
 else:
-    st.success("🔐 Logged in with Jira")
-    st.write("Access Token:", st.session_state["access_token"])
+    access_token = st.session_state["access_token"]
+
+    try:
+        # Step 1: get cloud_id
+        headers = {"Authorization": f"Bearer {access_token}"}
+        r = requests.get("https://api.atlassian.com/oauth/token/accessible-resources", headers=headers)
+        r.raise_for_status()
+        cloud_id = r.json()[0]["id"]
+
+        # Step 2: call /myself to get user info
+        me_url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/myself"
+        me_resp = requests.get(me_url, headers=headers)
+        me_resp.raise_for_status()
+        me_data = me_resp.json()
+        email = me_data.get("emailAddress", "Unknown user")
+
+        st.success(f"🔐 Logged in as {email}")
+
+    except Exception as e:
+        st.warning("Logged in, but failed to fetch user profile.")
+        st.text(str(e))
 
 st.subheader("🪓 Submit a Bug")
 
