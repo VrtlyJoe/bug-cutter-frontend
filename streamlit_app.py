@@ -10,7 +10,7 @@ if "access_token" not in st.session_state and "access_token" in query_params:
     st.session_state["access_token"] = query_params["access_token"]
 
 st.title("Vrtly Bug Template")
-st.markdown("File bugs with all the bells and whistles: Slack, autocomplete, and screenshots.")
+st.markdown("File bugs with all the bells and whistles: Slack, autocomplete, screenshots.")
 
 priority_options = ["Medium"]
 category_options = []
@@ -58,20 +58,21 @@ else:
                 st.warning("⚠️ No categories from Jira. Using fallback input.")
                 category = st.text_input("📁 Bug Category")
 
-            assignee_input = st.text_input("👤 Assignee (type to search)", key="assignee_input")
+            # True autocomplete logic (single box)
+            assignee_query = st.text_input("👤 Search Assignee")
             assignee = ""
-            if assignee_input.strip():
-                a_resp = requests.get(
-                    f"{BACKEND_URL}/autocomplete/assignees",
-                    params={"token": access_token, "q": assignee_input}
-                )
-                matches = a_resp.json().get("results", []) if a_resp.ok else []
-                assignee_names = [
-                    m.get("name") or m.get("displayName") for m in matches
+            if assignee_query:
+                a_resp = requests.get(f"{BACKEND_URL}/autocomplete/assignees", params={
+                    "token": access_token,
+                    "q": assignee_query
+                })
+                results = a_resp.json().get("results", []) if a_resp.ok else []
+                assignee_options = [
+                    m.get("name") or m.get("displayName") for m in results
                     if m.get("name") or m.get("displayName")
                 ]
-                if assignee_names:
-                    assignee = st.selectbox("🔎 Select Assignee", assignee_names, key="assignee_select")
+                if assignee_options:
+                    assignee = st.selectbox("🔎 Select Assignee", assignee_options)
 
             selected_components = st.multiselect("🏷 Components", options=component_options)
             components = ", ".join(selected_components)
@@ -119,4 +120,4 @@ else:
         st.text(str(e))
 
 st.markdown("---")
-st.caption("Built with ❤️ by the Bug Cutter team.")
+st.caption("The Bug Cutter team.")
