@@ -13,23 +13,27 @@ st.title("🐞 Bug Cutter Dashboard")
 st.markdown("Welcome to the Bug Cutter App. Cut bugs. Add subtasks. Connect with Jira.")
 st.subheader("🔐 Jira Authentication")
 
-# Not logged in
+# Default fallback options
+priority_options = ["Medium"]
+category_options = []
+
+# Not logged in yet
 if "access_token" not in st.session_state:
     st.markdown(f"[🔗 Click here to connect Jira]({BACKEND_URL}/auth/start)")
 
-# Logged in: try to fetch user info
+# Logged in, fetch user and Jira dropdown values
 else:
     access_token = st.session_state["access_token"]
 
     try:
         headers = {"Authorization": f"Bearer {access_token}"}
-        
-        # Step 1: Get cloud_id
-        r = requests.get("https://api.atlassian.com/oauth/token/accessible-resources", headers=headers)
-        r.raise_for_status()
-        cloud_id = r.json()[0]["id"]
 
-        # Step 2: Get user info
+        # 1. Get cloud ID
+        cloud_resp = requests.get("https://api.atlassian.com/oauth/token/accessible-resources", headers=headers)
+        cloud_resp.raise_for_status()
+        cloud_id = cloud_resp.json()[0]["id"]
+
+        # 2. Get Jira user info
         me_url = f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/myself"
         me_resp = requests.get(me_url, headers=headers)
         me_resp.raise_for_status()
@@ -38,14 +42,25 @@ else:
 
         st.success(f"🔐 Logged in as {email}")
 
-        # ✅ BUG FORM: shown only if /myself works
+        # 3. Fetch priority + category options from backend
+        opt_resp = requests.get(f"{BACKEND_URL}/options", params={"token": access_token})
+        if opt_resp.ok:
+            opt_data = opt_resp.json()
+            priority_options = opt_data.get("priorities", priority_options)
+            category_options = opt_data.get("categories", category_options)
+
+        # 4. BUG FORM
         st.subheader("🪓 Submit a Bug")
 
         with st.form("bug_submit_form"):
             summary = st.text_input("📝 Summary")
             description = st.text_area("🗒 Description")
-            priority = st.selectbox("🔥 Priority", ["High", "Medium", "Low"])
-            category = st.text_input("📁 Category")
+            priority = st.selectbox("🔥 Priority", priority_options)
+            category = (
+                st.selectbox("📁 Category", category_options)
+                if category_options else
+                st.text_input("📁 Category")
+            )
             assignee = st.text_input("👤 Assignee (optional)", placeholder="jira.username")
             components = st.text_input("🏷 Components (optional, comma-separated)")
             subtasks = st.text_area("📌 Subtasks (one per line)", height=100)
@@ -54,37 +69,30 @@ else:
             submit = st.form_submit_button("🚀 Submit Bug")
 
         if submit:
-            if not summary or not description or not priority or not category:
-                st.warning("Please fill out all required fields.")
-            else:
-                with st.spinner("Creating bug..."):
-                    files = [("files", (f.name, f.read())) for f in uploaded_files] if uploaded_files else []
-                    payload = {
-                        "summary": summary,
-                        "description": description,
-                        "priority": priority,
-                        "category": category,
-                        "assignee": assignee,
-                        "components": components,
-                        "subtasks": subtasks,
-                        "token": access_token,
-                    }
-                    try:
-                        response = requests.post(
-                            f"{BACKEND_URL}/submit_bug/",
-                            data=payload,
-                            files=files if files else None,
-                        )
-                        if response.status_code == 200:
-                            st.success(f"✅ Bug created: {response.json().get('issue_key')}")
-                        else:
-                            st.error(f"❌ Error: {response.status_code}")
-                            st.text(response.text)
-                    except Exception as e:
-                        st.error(f"Request failed: {e}")
+            with st.spinner("Creating bug..."):
+                files = [("files", (f.name, f.read())) for f in uploaded_files] if uploaded_files else []
+                payload = {
+                    "summary": summary,
+                    "description": description,
+                    "priority": priority,
+                    "category": category,
+                    "assignee": assignee,
+                    "components": components,
+                    "subtasks": subtasks,
+                    "token": access_token,
+                }
+                try:
+                    response = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files or None)
+                    if response.status_code == 200:
+                        st.success(f"✅ Bug created: {response.json().get('issue_key')}")
+                    else:
+                        st.error(f"❌ Error: {response.status_code}")
+                        st.text(response.text)
+                except Exception as e:
+                    st.error(f"Request failed: {e}")
 
     except Exception as e:
-        st.error("⚠️ Logged in, but could not fetch user profile from Jira.")
+        st.error("⚠️ Logged in, but failed to fetch user info or dropdowns.")
         st.text(str(e))
 
 st.markdown("---")
