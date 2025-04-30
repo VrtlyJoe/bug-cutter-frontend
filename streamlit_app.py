@@ -119,6 +119,42 @@ else:
                     except Exception as e:
                         st.error(f"Request failed: {e}")
 
+        st.markdown("---")
+        st.subheader("📌 Add Subtasks to Existing Bug")
+
+        sub_target_query = st.text_input("🔍 Search Bug to Add Subtasks")
+        issue_id = ""
+        if sub_target_query:
+            bug_resp = requests.get(f"{BACKEND_URL}/search_bugs", params={
+                "token": access_token,
+                "q": sub_target_query
+            })
+            options = bug_resp.json().get("results", []) if bug_resp.ok else []
+            if options:
+                formatted = [f"{o['key']} – {o['summary']}" for o in options]
+                selection = st.selectbox("🎯 Select Bug", formatted)
+                issue_id = selection.split(" – ")[0]
+
+        new_subs = st.text_area("📥 New Subtasks (one per line)", key="new_subtasks", height=100)
+        subtask_submit = st.button("➕ Add Subtasks to Bug")
+
+        if subtask_submit:
+            if not issue_id:
+                st.error("Please select a bug first.")
+            elif not new_subs.strip():
+                st.error("Please enter at least one subtask.")
+            else:
+                with st.spinner("Adding subtasks..."):
+                    resp = requests.post(
+                        f"{BACKEND_URL}/bug/{issue_id}/add_subtask",
+                        data={"token": access_token, "subtasks": new_subs}
+                    )
+                    if resp.status_code == 200:
+                        st.success("✅ Subtasks added!")
+                    else:
+                        st.error("❌ Failed to add subtasks.")
+                        st.text(resp.text)
+
     except Exception as e:
         st.error("⚠️ Login succeeded, but Jira API failed.")
         st.text(str(e))
