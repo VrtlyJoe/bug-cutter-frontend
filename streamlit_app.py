@@ -1,8 +1,8 @@
-# streamlit_app.py  –  Vrtly Bug Cutter  (header fix only)
+# streamlit_app.py  –  Vrtly Bug Cutter
 import streamlit as st, streamlit.components.v1 as components
 import requests, traceback, base64, pathlib
 
-BACKEND_URL = "https://bug-cutter-backend.onrender.com"    # adjust if needed
+BACKEND_URL = "https://bug-cutter-backend.onrender.com"   # change if needed
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
 # ────────── header (logo inline with title, no emojis) ────────────────────────
@@ -21,7 +21,7 @@ def inline_header(png_path: str, height: int = 36) -> None:
 
 inline_header("vrtly_logo.png")
 
-# ────────── access-token capture ──────────────────────────────────────────────
+# ────────── token capture ─────────────────────────────────────────────────────
 query = st.query_params.to_dict()
 if (tok := query.get("access_token")):
     st.session_state["access_token"] = tok
@@ -33,7 +33,7 @@ if (tok := query.get("access_token")):
 
 token = st.session_state.get("access_token")
 
-# show Jira login link if needed
+# ────────── login link if not authenticated ──────────────────────────────────
 if not token:
     st.markdown(f"[Log in with Jira]({BACKEND_URL}/auth/start)", unsafe_allow_html=True)
     st.stop()
@@ -43,7 +43,14 @@ me = requests.get(f"{BACKEND_URL}/me", params={"token": token}).json()
 st.markdown(f"**Logged in as:** {me.get('email', '(unknown)')}")
 st.divider()
 
-# ────────── form (unchanged) ─────────────────────────────────────────────────
+# ────────── file-uploader (outside form)  + immediate preview ────────────────
+file_up = st.file_uploader(
+    "Screenshot / Video (optional)", type=["png", "jpg", "jpeg", "mp4"], key="file_up"
+)
+if file_up and file_up.type.startswith("image"):
+    st.image(file_up, caption=file_up.name, width=320)
+
+# ────────── bug-form (all other fields) ───────────────────────────────────────
 with st.form("bug_form"):
     col1, col2 = st.columns(2)
 
@@ -56,28 +63,31 @@ with st.form("bug_form"):
         )
 
     with col2:
-        priority = st.selectbox("Priority", ["Lowest", "Low", "Medium", "High", "Highest"])
-        category = st.selectbox("Bug Category", ["Web UI", "App", "Back End", "Admin", "Other"])
+        priority = st.selectbox(
+            "Priority", ["Lowest", "Low", "Medium", "High", "Highest"]
+        )
+        category = st.selectbox(
+            "Bug Category", ["Web UI", "App", "Back End", "Admin", "Other"]
+        )
 
-        # assignee search (unchanged)
+        # ── assignee search + dropdown ────────────────────────────────────────
         assignee_search = st.text_input("Search assignee")
         assignee_id = ""
         if assignee_search:
-            r = requests.get(f"{BACKEND_URL}/search_users",
-                             params={"q": assignee_search, "token": token})
+            r = requests.get(
+                f"{BACKEND_URL}/search_users",
+                params={"q": assignee_search, "token": token},
+            )
             if r.ok and r.json():
                 users = r.json()
                 names = [u["displayName"] for u in users]
                 selected = st.selectbox("Select assignee", names)
-                assignee_id = next(u["accountId"] for u in users if u["displayName"] == selected)
-
-    # file upload + immediate preview (unchanged)
-    file_up = st.file_uploader("Screenshot / Video (optional)",
-                               type=["png", "jpg", "jpeg", "mp4"])
-    if file_up and file_up.type.startswith("image"):
-        st.image(file_up, caption=file_up.name, width=320)
+                assignee_id = next(
+                    u["accountId"] for u in users if u["displayName"] == selected
+                )
 
     submitted = st.form_submit_button("Submit Bug")
+
     if submitted:
         try:
             data = {
@@ -91,6 +101,7 @@ with st.form("bug_form"):
                 "token": token,
             }
             files = {"files": (file_up.name, file_up.getvalue(), file_up.type)} if file_up else {}
+
             r = requests.post(f"{BACKEND_URL}/submit_bug/", data=data, files=files)
             r.raise_for_status()
             st.success(f"Bug {r.json()['issue_key']} created.")
