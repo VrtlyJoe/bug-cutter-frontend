@@ -2,20 +2,25 @@
 import streamlit as st, streamlit.components.v1 as components
 import requests, traceback
 
-BACKEND_URL = "https://bug-cutter-backend.onrender.com"   # change if needed
+BACKEND_URL = "https://bug-cutter-backend.onrender.com"   # adjust if needed
 
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
-# ────────── header: logo + title ──────────────────────────────────────────────
-st.image("vrtly_logo.png", width=220)   # <-- use your PNG logo here
-st.title("Vrtly Bug Cutter")
+# ────────── header: logo + title inline ───────────────────────────────────────
+logo_col, title_col = st.columns([1, 8])
+with logo_col:
+    st.image("vrtly_logo.png", width=40)      # about the height of an h1 line
+with title_col:
+    st.markdown(
+        "<h1 style='margin-top:4px'>Vrtly&nbsp;Bug&nbsp;Cutter</h1>",
+        unsafe_allow_html=True,
+    )
 
-# ────────── capture ?access_token=... ─────────────────────────────────────────
-query_params = st.query_params.to_dict()
-if (tok := query_params.get("access_token")):
+# ────────── capture ?access_token=… ───────────────────────────────────────────
+query = st.query_params.to_dict()
+if (tok := query.get("access_token")):
     st.session_state["access_token"] = tok
     st.success("Logged in via Jira")
-    # scrub token from address bar
     components.html(
         "<script>history.replaceState(null,null,window.location.pathname)</script>",
         height=0,
@@ -23,7 +28,7 @@ if (tok := query_params.get("access_token")):
 
 token = st.session_state.get("access_token")
 
-# ────────── if not logged-in show Jira link & stop ────────────────────────────
+# ────────── show login link if missing token ─────────────────────────────────
 if not token:
     st.markdown(
         f"[Log in with Jira]({BACKEND_URL}/auth/start)",
@@ -31,13 +36,13 @@ if not token:
     )
     st.stop()
 
-# ────────── show reporter e-mail ──────────────────────────────────────────────
+# ────────── reporter info ────────────────────────────────────────────────────
 me = requests.get(f"{BACKEND_URL}/me", params={"token": token}).json()
 reporter_email = me.get("email") or "(unknown)"
 st.markdown(f"**Logged in as:** {reporter_email}")
 st.divider()
 
-# ────────── bug-form ──────────────────────────────────────────────────────────
+# ────────── bug-form ─────────────────────────────────────────────────────────
 with st.form("bug_form"):
     col1, col2 = st.columns(2)
 
@@ -57,7 +62,7 @@ with st.form("bug_form"):
             "Bug Category", ["Web UI", "App", "Back End", "Admin", "Other"]
         )
 
-        # ── assignee search ─────────────────────────────
+        # ── assignee search ────────────────────────────
         assignee_search = st.text_input("Search assignee")
         assignee_id = ""
         if assignee_search:
@@ -75,7 +80,6 @@ with st.form("bug_form"):
                     if u["displayName"] == selected
                 )
 
-    # ───────── file upload + preview ───────────────────
     file_up = st.file_uploader(
         "Screenshot / Video (optional)", type=["png", "jpg", "jpeg", "mp4"]
     )
@@ -102,8 +106,8 @@ with st.form("bug_form"):
                 else {}
             )
 
-            resp = requests.post(f"{BACKEND_URL}/submit_bug/", data=data, files=files)
-            resp.raise_for_status()
-            st.success(f"Bug {resp.json()['issue_key']} created.")
+            r = requests.post(f"{BACKEND_URL}/submit_bug/", data=data, files=files)
+            r.raise_for_status()
+            st.success(f"Bug {r.json()['issue_key']} created.")
         except Exception:
             st.error(f"Error:\n{traceback.format_exc()}")
