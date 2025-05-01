@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+python-multipart
+httpx
+pillow             # NEW – used by Streamlit preview code
