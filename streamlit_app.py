@@ -1,15 +1,15 @@
 import streamlit as st, streamlit.components.v1 as components
-import requests, traceback
+import requests, traceback, io
+from PIL import Image          # NEW: to inspect dimensions
 
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
-# ── Capture access_token from URL ───────────────────────
+# ── capture Jira access token ───────────────────────────
 q = st.query_params.to_dict()
 if "access_token" in q:
     st.session_state["access_token"] = q["access_token"]
     components.html("<script>history.replaceState(null,null,location.pathname)</script>", height=0)
 
-# ── Landing page (not logged in) ───────────────────────
 if "access_token" not in st.session_state:
     st.title("🐞 Vrtly Bug Cutter")
     st.markdown("[🔑 Log in with Jira »](https://bug-cutter-backend.onrender.com/auth/start)", unsafe_allow_html=True)
@@ -17,88 +17,89 @@ if "access_token" not in st.session_state:
 
 token = st.session_state["access_token"]
 
-# ── Reporter email for banner ───────────────────────────
+# ── fetch Jira email for banner ─────────────────────────
 try:
     reporter_email = requests.get("https://bug-cutter-backend.onrender.com/me",
-                                  params={"token": token}, timeout=5).json().get("email", "")
-except Exception:
-    reporter_email = ""
-
+                                  params={"token": token}, timeout=5).json().get("email","")
+except Exception: reporter_email = ""
 st.markdown(f"✅ **Logged in as {reporter_email or '(unknown)'}**", unsafe_allow_html=True)
 
-# ── Fetch dropdown options ─────────────────────────────
-BUG_CATS = ["Web UI", "App", "Back End", "Admin", "Other"]
-STD_PRI  = ["Lowest", "Low", "Medium", "High", "Highest"]
+# ── dropdown data ──────────────────────────────────────
+BUG_CATS = ["Web UI","App","Back End","Admin","Other"]; STD_PRI = ["Lowest","Low","Medium","High","Highest"]
 try:
-    opts = requests.get("https://bug-cutter-backend.onrender.com/options",
-                        params={"token": token}, timeout=5).json()
-    priorities      = opts.get("priorities")  or STD_PRI
-    components_opts = opts.get("components") or []
+    o = requests.get("https://bug-cutter-backend.onrender.com/options",
+                     params={"token": token}, timeout=5).json()
+    priorities, components_opts = o.get("priorities") or STD_PRI, o.get("components") or []
 except Exception:
     priorities, components_opts = STD_PRI, []
 
-# ── Assignee search (cached) ───────────────────────────
+# ── assignee search (outside form) ─────────────────────
 @st.cache_data(ttl=60)
-def find_users(txt):
-    if len(txt) < 3: return []
+def find_users(q: str):
+    if len(q) < 3: return []
     try:
         r = requests.get("https://bug-cutter-backend.onrender.com/search_users",
-                         params={"q": txt, "token": token}, timeout=5)
+                         params={"q": q, "token": token}, timeout=5)
         return r.json().get("results", [])
-    except Exception:
-        return []
+    except Exception: return []
 
-# ── Form UI ────────────────────────────────────────────
-st.title("🐞 Vrtly Bug Cutter")
+st.subheader("Assignee Search")
+search_txt = st.text_input("Type ≥3 chars & press ↵")
+assignees  = find_users(search_txt) if len(search_txt)>=3 else []
+ass_disp   = st.selectbox("Choose assignee",
+                          ["-- none --"]+[u["displayName"] for u in assignees])
+ass_id     = next((u["accountId"] for u in assignees
+                   if u["displayName"]==ass_disp),"") if ass_disp!="-- none --" else ""
+
+st.divider()
+
+# ── bug form ───────────────────────────────────────────
+st.title("🐞 Create Bug")
 with st.form("bug_form"):
-    col1, col2 = st.columns(2)
-    with col1:
+    c1,c2 = st.columns(2)
+    with c1:
         summary   = st.text_input("Summary", max_chars=150)
         priority  = st.selectbox("Priority", priorities,
                                  index=priorities.index("Medium") if "Medium" in priorities else 0)
         category  = st.selectbox("Bug Category", BUG_CATS)
-        component = st.selectbox("Jira Component", ["-- none --"] + components_opts)
-    with col2:
-        default = ("Org Name:\n"
-                   "Org ID:\n"
-                   "Issue:\n"
-                   "Expected Behavior:\n")
-        description = st.text_area("Description (fill each section):",
-                                   value=default, height=220)
+        component = st.selectbox("Jira Component", ["-- none --"]+components_opts)
+    with c2:
+        default = "Org Name:\nOrg ID:\nIssue:\nExpected Behavior:\n"
+        description = st.text_area("Description (fill sections):", value=default, height=220)
 
-    # assignee search + dropdown
-    qname = st.text_input("Search assignee (≥3 chars)")
-    users = find_users(qname) if qname else []
-    assignee_disp = st.selectbox("Select assignee",
-                                 ["-- none --"] + [u["displayName"] for u in users])
-    assignee_id = next((u["accountId"] for u in users
-                        if u["displayName"] == assignee_disp), "") if assignee_disp != "-- none --" else ""
-
-    # image preview
-    image = st.file_uploader("Optional Screenshot", type=["png", "jpg", "jpeg"])
-    if image:
-        st.image(image, width=200, caption="Preview")
+    # image preview + dimensions
+    image_file = st.file_uploader("Optional Screenshot", type=["png","jpg","jpeg"])
+    if image_file:
+        img = Image.open(image_file)
+        w,h = img.size
+        st.info(f"Preview image size: {w}×{h}px")
+        # show thumbnail (max width 300)
+        max_w = 300
+        ratio = max_w / w if w > max_w else 1
+        disp_w = int(w * ratio)
+        st.image(img, width=disp_w)
 
     subtasks = st.text_area("Optional Subtasks (one per line)")
     confirm  = st.checkbox("Confirm and submit")
-    submitted = st.form_submit_button("✂️ Cut Bug")
+    submit   = st.form_submit_button("✂️ Cut Bug")
 
-# ── Submit handler ─────────────────────────────────────
-if submitted:
+# ── submit handler ─────────────────────────────────────
+if submit:
     if not confirm:
-        st.error("Please confirm before submitting."); st.stop()
+        st.error("Please confirm"); st.stop()
     if not summary or not description.strip():
-        st.error("Summary & Description required."); st.stop()
+        st.error("Summary & Description required"); st.stop()
+
+    files = {"files": image_file} if image_file else None
+    data  = {
+        "summary":summary, "description":description,
+        "priority":priority, "category":category,
+        "assignee":ass_id,
+        "components":"" if component=="-- none --" else component,
+        "subtasks":subtasks, "token":token,
+    }
 
     with st.spinner("Submitting…"):
-        files = {"files": image} if image else None
-        data = {
-            "summary": summary, "description": description,
-            "priority": priority, "category": category,
-            "assignee": assignee_id,
-            "components": "" if component == "-- none --" else component,
-            "subtasks": subtasks, "token": token,
-        }
         try:
             r = requests.post("https://bug-cutter-backend.onrender.com/submit_bug/",
                               data=data, files=files); r.raise_for_status()
