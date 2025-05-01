@@ -1,13 +1,13 @@
-# streamlit_app.py  |  Vrtly Bug Cutter – all business
+# streamlit_app.py  —  Vrtly Bug Cutter (stable search-assignee + review overlay)
 import streamlit as st, streamlit.components.v1 as components
 import requests, traceback, base64, pathlib
 
 BACKEND_URL = "https://bug-cutter-backend.onrender.com"
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
-# ═══ Header: logo + title (left-aligned) ══════════════════════════════════════
-def header_inline(png_file: str, h: int = 36):
-    b64 = base64.b64encode(pathlib.Path(png_file).read_bytes()).decode()
+# ═════════ Header (logo + title) ══════════════════════════════════════════════
+def header_inline(png: str, h: int = 36):
+    b64 = base64.b64encode(pathlib.Path(png).read_bytes()).decode()
     st.markdown(
         f"""
         <div style="display:flex;align-items:center;margin-bottom:8px">
@@ -20,28 +20,24 @@ def header_inline(png_file: str, h: int = 36):
 
 header_inline("vrtly_logo.png")
 
-# ═══ Jira OAuth token capture ═════════════════════════════════════════════════
+# ═════════ Jira OAuth capture ═════════════════════════════════════════════════
 qp = st.query_params.to_dict()
 if (tok := qp.get("access_token")):
     st.session_state["access_token"] = tok
     st.success("Logged in via Jira")
-    components.html(
-        "<script>history.replaceState(null,null,window.location.pathname)</script>",
-        height=0,
-    )
+    components.html("<script>history.replaceState(null,null,window.location.pathname)</script>", height=0)
 
 token = st.session_state.get("access_token")
 if not token:
     st.markdown(f"[Log in with Jira]({BACKEND_URL}/auth/start)", unsafe_allow_html=True)
     st.stop()
 
-# reporter identity
 me = requests.get(f"{BACKEND_URL}/me", params={"token": token}).json()
 reporter_email = me.get("email", "(unknown)")
 st.markdown(f"**Logged in as:** {reporter_email}")
 st.divider()
 
-# ═══ Ticket fields (straight order) ═══════════════════════════════════════════
+# ═════════ Ticket fields (order locked) ═══════════════════════════════════════
 summary = st.text_input("Summary / Title")
 description = st.text_area(
     "Description",
@@ -51,28 +47,31 @@ description = st.text_area(
 priority = st.selectbox("Priority", ["Lowest", "Low", "Medium", "High", "Highest"])
 category = st.selectbox("Bug Category", ["Web UI", "App", "Back End", "Admin", "Other"])
 
-# ── Assignee search: fires after 2+ chars, dropdown after ENTER ──────────────
-assignee_search = st.text_input("Search assignee")
-assignee_id, assignee_name = "", ""
+# ── Assignee search — type ≥2 chars, hit Enter, THEN dropdown appears ─────────
+assignee_search = st.text_input("Search assignee (type ≥2 chars, press Enter)")
+assignee_id = ""
+assignee_name = ""
+users = []
 if assignee_search and len(assignee_search) >= 2:
-    r = requests.get(
-        f"{BACKEND_URL}/search_users", params={"q": assignee_search, "token": token}
+    resp = requests.get(
+        f"{BACKEND_URL}/search_users",
+        params={"q": assignee_search, "token": token},
+        timeout=10,
     )
-    users = r.json() if r.ok and isinstance(r.json(), list) else []
-    if users:
-        names = [u["displayName"] for u in users]
-        chosen = st.selectbox("Select assignee", names, key="assignee_box")
-        assignee_name = chosen
-        assignee_id = next(u["accountId"] for u in users if u["displayName"] == chosen)
-    else:
-        st.warning("No Jira users found.")
+    if resp.ok and isinstance(resp.json(), list):
+        users = resp.json()
 
-# ── File uploader & previews (multiple) ───────────────────────────────────────
+if users:
+    names = [u["displayName"] for u in users]
+    chosen = st.selectbox("Select assignee", names, key="assignee_box")
+    assignee_name = chosen
+    assignee_id = next(u["accountId"] for u in users if u["displayName"] == chosen)
+
+# ── Uploader & previews ───────────────────────────────────────────────────────
 uploads = st.file_uploader(
     "Screenshot / Video (optional)",
     type=["png", "jpg", "jpeg", "mp4", "mpeg4"],
     accept_multiple_files=True,
-    key="file_up",
 )
 for up in uploads:
     if up.type.startswith("image"):
@@ -80,18 +79,17 @@ for up in uploads:
 
 st.divider()
 
-# ═══ Review / Confirm workflow ═══════════════════════════════════════════════
+# ═════════ Review / Confirm flow ══════════════════════════════════════════════
 if "review_mode" not in st.session_state:
     st.session_state["review_mode"] = False
 
-# Step 1 – Review button
 if not st.session_state["review_mode"]:
     if st.button("Review Bug"):
         st.session_state["review_mode"] = True
         st.rerun()
     st.stop()
 
-# Step 2 – Summary overlay
+# ― Review overlay ―
 st.subheader("Review Bug")
 st.write(f"**Summary:** {summary or '*blank*'}")
 st.write(f"**Priority:** {priority}   **Category:** {category}")
@@ -108,15 +106,14 @@ if uploads:
         else:
             cols[i % 3].markdown(f"📎 {up.name}")
 
-col_ok, col_cancel = st.columns([1, 1])
-confirm = col_ok.button("Confirm Submit", key="confirm_btn")
-cancel  = col_cancel.button("Cancel",          key="cancel_btn")
+c1, c2 = st.columns([1, 1])
+confirm = c1.button("Confirm Submit")
+cancel  = c2.button("Cancel")
 
 if cancel:
     st.session_state["review_mode"] = False
     st.rerun()
 
-# Step 3 – Final push to backend
 if confirm:
     try:
         payload = {
@@ -130,9 +127,9 @@ if confirm:
             "token": token,
         }
         files = [("files", (u.name, u.getvalue(), u.type)) for u in uploads]
-        resp = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files)
-        resp.raise_for_status()
-        st.success(f"Bug {resp.json()['issue_key']} created.")
+        r = requests.post(f"{BACKEND_URL}/submit_bug/", data=payload, files=files)
+        r.raise_for_status()
+        st.success(f"Bug {r.json()['issue_key']} created.")
         st.session_state["review_mode"] = False
     except Exception:
         st.error(f"Error:\n{traceback.format_exc()}")
