@@ -4,7 +4,7 @@ from PIL import Image
 
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
-# ── token capture ───────────────────────────────────────
+# ── capture Jira token ─────────────────────────────────
 if "access_token" in st.query_params:
     st.session_state["access_token"] = st.query_params["access_token"]
     components.html("<script>history.replaceState(null,null,location.pathname)</script>", height=0)
@@ -16,7 +16,7 @@ if "access_token" not in st.session_state:
 
 token = st.session_state["access_token"]
 
-# ── user banner ─────────────────────────────────────────
+# ── user banner ────────────────────────────────────────
 try:
     me = requests.get("https://bug-cutter-backend.onrender.com/me",
                       params={"token": token}, timeout=5).json()
@@ -30,7 +30,7 @@ PRIO     = ["Lowest","Low","Medium","High","Highest"]
 
 st.title("🐞 Vrtly Bug Cutter")
 
-# ─────────────── main form ─────────────────────────────
+# ────────────────── main form ──────────────────────────
 with st.form("bug_form"):
     summary = st.text_input("Summary / Title")
 
@@ -48,7 +48,7 @@ with st.form("bug_form"):
     confirm   = st.checkbox("Confirm and submit")
     submitted = st.form_submit_button("✂️ Cut Bug")
 
-# ─────────────── file upload / preview ─────────────────
+# ─────────── file upload / preview ─────────────────────
 st.subheader("Screenshot / Video (optional)")
 file_up = st.file_uploader("Upload PNG / JPG / JPEG / MP4",
                            type=["png", "jpg", "jpeg", "mp4"])
@@ -63,7 +63,7 @@ if file_up:
         st.info("Video preview")
         st.video(file_up)
 
-# ─────────────── assignee search ───────────────────────
+# ─────────── assignee search ──────────────────────────
 @st.cache_data(ttl=60)
 def find_users(q: str):
     if len(q) < 3: return []
@@ -82,7 +82,7 @@ disp = st.selectbox("Choose assignee",
 assignee_id = next((u["accountId"] for u in users if u["displayName"] == disp), "") \
               if disp != "-- none --" else ""
 
-# ─────────────── submit handler ────────────────────────
+# ─────────── submit handler ───────────────────────────
 if submitted:
     if not confirm:
         st.error("Please confirm before submitting."); st.stop()
@@ -104,8 +104,13 @@ if submitted:
     with st.spinner("Submitting…"):
         try:
             r = requests.post("https://bug-cutter-backend.onrender.com/submit_bug/",
-                              data=data, files=files); r.raise_for_status()
+                              data=data, files=files)
+            r.raise_for_status()
             key = r.json()["issue_key"]
             st.success(f"✅ Created!  [{key}](https://vrtlyai.atlassian.net/browse/{key})")
+        except requests.HTTPError as e:
+            st.error("❌ Backend returned:")
+            st.code(e.response.text if e.response is not None else str(e))
         except Exception:
-            st.error("❌ Submission failed"); st.text(traceback.format_exc())
+            st.error("❌ Submission failed")
+            st.text(traceback.format_exc())
