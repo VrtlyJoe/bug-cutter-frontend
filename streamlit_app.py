@@ -1,22 +1,24 @@
 # streamlit_app.py  –  Vrtly Bug Cutter
 import streamlit as st, streamlit.components.v1 as components
-import requests, traceback
+import requests, traceback, base64, pathlib
 
-BACKEND_URL = "https://bug-cutter-backend.onrender.com"   # adjust if needed
-
+BACKEND_URL = "https://bug-cutter-backend.onrender.com"   # change if needed
 st.set_page_config(page_title="Vrtly Bug Cutter", layout="wide")
 
-# ────────── header: logo + title inline ───────────────────────────────────────
-logo_col, title_col = st.columns([1, 8])
-with logo_col:
-    st.image("vrtly_logo.png", width=40)      # about the height of an h1 line
-with title_col:
-    st.markdown(
-        "<h1 style='margin-top:4px'>Vrtly&nbsp;Bug&nbsp;Cutter</h1>",
-        unsafe_allow_html=True,
+# ────────── INLINE LOGO + TITLE (pure HTML) ───────────────────────────────────
+def _logo_html(png_path: str, height_px: int = 36) -> str:
+    b64 = base64.b64encode(pathlib.Path(png_path).read_bytes()).decode()
+    return (
+        f"<div style='display:flex; align-items:center;'>"
+        f"<img src='data:image/png;base64,{b64}' height='{height_px}' "
+        f"style='margin-right:10px'/>"
+        f"<h1 style='margin:0'>Vrtly&nbsp;Bug&nbsp;Cutter</h1>"
+        f"</div>"
     )
 
-# ────────── capture ?access_token=… ───────────────────────────────────────────
+st.markdown(_logo_html("vrtly_logo.png"), unsafe_allow_html=True)
+
+# ────────── access-token capture ──────────────────────────────────────────────
 query = st.query_params.to_dict()
 if (tok := query.get("access_token")):
     st.session_state["access_token"] = tok
@@ -28,15 +30,12 @@ if (tok := query.get("access_token")):
 
 token = st.session_state.get("access_token")
 
-# ────────── show login link if missing token ─────────────────────────────────
+# ────────── login link (if no token) ──────────────────────────────────────────
 if not token:
-    st.markdown(
-        f"[Log in with Jira]({BACKEND_URL}/auth/start)",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"[Log in with Jira]({BACKEND_URL}/auth/start)", unsafe_allow_html=True)
     st.stop()
 
-# ────────── reporter info ────────────────────────────────────────────────────
+# ────────── reporter info ─────────────────────────────────────────────────────
 me = requests.get(f"{BACKEND_URL}/me", params={"token": token}).json()
 reporter_email = me.get("email") or "(unknown)"
 st.markdown(f"**Logged in as:** {reporter_email}")
@@ -62,7 +61,6 @@ with st.form("bug_form"):
             "Bug Category", ["Web UI", "App", "Back End", "Admin", "Other"]
         )
 
-        # ── assignee search ────────────────────────────
         assignee_search = st.text_input("Search assignee")
         assignee_id = ""
         if assignee_search:
@@ -75,9 +73,7 @@ with st.form("bug_form"):
                 names = [u["displayName"] for u in users]
                 selected = st.selectbox("Select assignee", names)
                 assignee_id = next(
-                    u["accountId"]
-                    for u in users
-                    if u["displayName"] == selected
+                    u["accountId"] for u in users if u["displayName"] == selected
                 )
 
     file_up = st.file_uploader(
